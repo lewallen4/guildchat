@@ -1,0 +1,2 @@
+# guildchat
+server
