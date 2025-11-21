@@ -1,0 +1,109 @@
+name: Deploy Chat Server page
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'chat-server/**' ]
+
+jobs:
+  deploy-chat-server:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        # sudo apt-get full-upgrade
+        sudo apt-get install -y python3 python3-pip
+
+    - name: Setup Python
+      run: |
+        python3 -m pip install flask requests
+
+    - name: Make server script executable
+      run: |
+        chmod +x chat-server/start-server.sh
+        chmod +x chat-server/chat-server.py
+
+    - name: Install Ngrok
+      run: |
+        curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt update
+        sudo apt install -y ngrok
+
+    - name: Add ngrok auth token
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      run: ngrok config add-authtoken "$NGROK_AUTH_TOKEN"
+
+    - name: Start Chat Server with Ngrok
+      run: |
+        cd chat-server
+        ./start-server.sh &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+
+        # Wait for server to start
+        sleep 5
+
+        # Start ngrok tunnel
+        ngrok http 8080 --log=stdout > ngrok.log &
+        NGROK_PID=$!
+        echo "NGROK_PID=$NGROK_PID" >> $GITHUB_ENV
+
+        # Wait for ngrok to start
+        sleep 10
+
+        # Get public URL
+        NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o 'https://[^"]*\.ngrok-free\.app')
+        echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
+        echo "Public Chat Server URL: $NGROK_URL"
+
+        # Display ngrok status
+        cat ngrok.log
+
+    - name: Generate GitHub Pages redirect
+      run: |
+        mkdir -p server
+        cat > server/index.html <<EOF
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="refresh" content="0; url=${NGROK_URL}" />
+        <title>Redirecting…</title>
+        <script>
+        // JavaScript fallback if meta refresh fails
+        window.location.href = "${NGROK_URL}";
+        </script>
+        </head>
+        <body>
+        <p>If you are not redirected automatically, <a href="${NGROK_URL}">click here</a>.</p>
+        <p style="margin-top:20px;color:red;font-weight:bold;">
+        If you are seeing this page directly on GitHub Pages, the chat server is offline or the redirect has not been updated.
+        </p>
+        </body>
+        </html>
+        EOF
+
+    - name: Commit redirect page
+      run: |
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+
+        git add server/index.html
+        git commit -m "Update redirect to ${NGROK_URL}" || echo "No changes to commit"
+        git push
+
+    - name: Keep Server Alive
+      run: |
+        echo "Chat Server is running at: $NGROK_URL"
+        echo "Keeping the server alive for 6 hours..."
+        # Save the URL to a file for client configuration
+        echo "CHAT_SERVER_URL=$NGROK_URL" >> server_url.txt
+        sleep 21600
