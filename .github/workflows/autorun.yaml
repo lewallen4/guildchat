@@ -103,6 +103,18 @@ jobs:
         git commit -m "Update redirect to ${NGROK_URL}" || echo "No changes to commit"
         git push
 
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+       with:
+          path: www/
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
     - name: Keep Server Alive
       run: |
         echo "Chat Server is running at: $NGROK_URL"
