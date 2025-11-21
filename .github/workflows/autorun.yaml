@@ -102,6 +102,8 @@ jobs:
         git add server/index.html
         git commit -m "Update redirect to ${NGROK_URL}" || echo "No changes to commit"
         git push
+        mkdir www
+        cp server/index.html www/index.html
 
     - name: Setup Pages
       uses: actions/configure-pages@v4
