@@ -1,4 +1,4 @@
-name: Deploy Chat Server
+name: Old Deploy Chat Server
 
 on:
   workflow_dispatch:
